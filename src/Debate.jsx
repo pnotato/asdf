@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Firebase from './Firebase';
 
 function Debate() {
     const videoRef = useRef(null);
@@ -7,12 +8,14 @@ function Debate() {
 
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [transcription, setTranscription] = useState('');
+    const [videoStream, setVideoStream] = useState(null);
 
     const startVideo = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             videoRef.current.srcObject = stream;
             streamRef.current = stream;
+            setVideoStream(stream);
 
             videoRef.current.onloadeddata = () => {
                 videoRef.current.play();
@@ -85,6 +88,8 @@ function Debate() {
             <div className="transcript-section">
                 <p>{transcription}</p>
             </div>
+            
+            <Firebase stream={videoStream} />
         </div>
     );
 }
