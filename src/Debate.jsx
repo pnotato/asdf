@@ -77,6 +77,7 @@ function Debate() {
 
     return (
         <div className="debate-container">
+            <h1>HELLO</h1>
             <div className="video-section">
                 <div
                     className="video-feed"
@@ -85,10 +86,13 @@ function Debate() {
                         border: isSpeaking ? '5px solid lime' : 'none',
                     }}
                 >
-                    <video ref={videoRef} className="video-element" autoPlay muted playsInline />
+                    <video ref={videoRef} className="video-element" autoPlay muted playsInline 
+                    style={{width: '150px', height: 'auto'}}
+                    />
                 </div>
             </div>
             <div className="transcript-section">
+                <h2>Transcript:</h2>
                 <p>{transcription}</p>
             </div>
         </div>
