@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import FirebaseStream from './Firebase';
+import FirebaseStream from './Firebase.js';
 
 function Debate() {
     const videoRef = useRef(null);
