@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import Firebase from './Firebase';
+import FirebaseStream from './Firebase';
 
 function Debate() {
     const videoRef = useRef(null);
@@ -89,7 +89,7 @@ function Debate() {
                 <p>{transcription}</p>
             </div>
             
-            <Firebase stream={videoStream} />
+            <FirebaseStream stream={videoStream} />
         </div>
     );
 }
