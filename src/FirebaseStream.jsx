@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, collection, setDoc, getDoc, updateDoc, onSnapshot, deleteDoc } from "firebase/firestore";
+import { getFirestore, doc, collection, setDoc, getDoc, addDoc, updateDoc, onSnapshot, deleteDoc } from "firebase/firestore";
 
 import "./App.css";
 
@@ -84,103 +84,120 @@ function Videos({ mode, callId, setPage }) {
   const remoteRef = useRef();
 
   const setupSources = async () => {
-    const localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    const remoteStream = new MediaStream();
-
-    localStream.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream);
-    });
-
-    pc.ontrack = (event) => {
-      event.streams[0].getTracks().forEach((track) => {
-        remoteStream.addTrack(track);
+    try {
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
       });
-    };
+      const remoteStream = new MediaStream();
 
-    localRef.current.srcObject = localStream;
-    remoteRef.current.srcObject = remoteStream;
-
-    setWebcamActive(true);
-
-    if (mode === "create") {
-      const callDocRef = doc(collection(firestore, "calls"));
-      const offerCandidates = collection(callDocRef, "offerCandidates");
-      const answerCandidates = collection(callDocRef, "answerCandidates");
-
-      setRoomId(callDocRef.id);
-
-      pc.onicecandidate = (event) => {
-        event.candidate && offerCandidates.add(event.candidate.toJSON());
-      };
-
-      const offerDescription = await pc.createOffer();
-      await pc.setLocalDescription(offerDescription);
-
-      const offer = {
-        sdp: offerDescription.sdp,
-        type: offerDescription.type,
-      };
-
-      await setDoc(callDocRef, { offer });
-
-      const unsubscribe = onSnapshot(callDocRef, (snapshot) => {
-        const data = snapshot.data();
-        if (!pc.currentRemoteDescription && data?.answer) {
-          const answerDescription = new RTCSessionDescription(data.answer);
-          pc.setRemoteDescription(answerDescription);
-        }
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
       });
 
-      const unsubscribeAnswerCandidates = onSnapshot(answerCandidates, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === "added") {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            pc.addIceCandidate(candidate);
+      pc.ontrack = (event) => {
+        // Add remote track to remote stream
+        event.streams[0].getTracks().forEach((track) => {
+          remoteStream.addTrack(track);
+        });
+      };
+
+      localRef.current.srcObject = localStream;
+      remoteRef.current.srcObject = remoteStream;
+
+      setWebcamActive(true);
+
+      if (mode === "create") {
+        const callDocRef = doc(collection(firestore, "calls"));
+        const offerCandidates = collection(callDocRef, "offerCandidates");
+        const answerCandidates = collection(callDocRef, "answerCandidates");
+
+        setRoomId(callDocRef.id);
+
+        // Send ICE candidates to Firestore for offer side
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            await addDoc(offerCandidates, event.candidate.toJSON());
+          }
+        };
+
+        // Create and send offer
+        const offerDescription = await pc.createOffer();
+        await pc.setLocalDescription(offerDescription);
+
+        const offer = {
+          sdp: offerDescription.sdp,
+          type: offerDescription.type,
+        };
+
+        await setDoc(callDocRef, { offer });
+
+        // Listen for answer from answer side
+        const unsubscribe = onSnapshot(callDocRef, (snapshot) => {
+          const data = snapshot.data();
+          if (!pc.currentRemoteDescription && data?.answer) {
+            const answerDescription = new RTCSessionDescription(data.answer);
+            pc.setRemoteDescription(answerDescription);
           }
         });
-      });
-    } else if (mode === "join") {
-      const callDocRef = doc(firestore, "calls", callId);
-      const answerCandidates = collection(callDocRef, "answerCandidates");
-      const offerCandidates = collection(callDocRef, "offerCandidates");
 
-      pc.onicecandidate = (event) => {
-        event.candidate && answerCandidates.add(event.candidate.toJSON());
-      };
-
-      const callData = (await getDoc(callDocRef)).data();
-
-      const offerDescription = callData.offer;
-      await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-      const answerDescription = await pc.createAnswer();
-      await pc.setLocalDescription(answerDescription);
-
-      const answer = {
-        type: answerDescription.type,
-        sdp: answerDescription.sdp,
-      };
-
-      await updateDoc(callDocRef, { answer });
-
-      const unsubscribeOfferCandidates = onSnapshot(offerCandidates, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === "added") {
-            let data = change.doc.data();
-            pc.addIceCandidate(new RTCIceCandidate(data));
-          }
+        // Listen for ICE candidates from answer side
+        const unsubscribeAnswerCandidates = onSnapshot(answerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+              const candidate = new RTCIceCandidate(change.doc.data());
+              pc.addIceCandidate(candidate);
+            }
+          });
         });
-      });
-    }
 
-    pc.onconnectionstatechange = (event) => {
-      if (pc.connectionState === "disconnected") {
-        hangUp();
+      } else if (mode === "join") {
+        const callDocRef = doc(firestore, "calls", callId);
+        const offerCandidates = collection(callDocRef, "offerCandidates");
+        const answerCandidates = collection(callDocRef, "answerCandidates");
+
+        // Send ICE candidates to Firestore for answer side
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            await addDoc(answerCandidates, event.candidate.toJSON());
+          }
+        };
+
+        const callData = (await getDoc(callDocRef)).data();
+
+        const offerDescription = callData.offer;
+        await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
+
+        // Create and send answer
+        const answerDescription = await pc.createAnswer();
+        await pc.setLocalDescription(answerDescription);
+
+        const answer = {
+          type: answerDescription.type,
+          sdp: answerDescription.sdp,
+        };
+
+        await updateDoc(callDocRef, { answer });
+
+        // Listen for ICE candidates from offer side
+        const unsubscribeOfferCandidates = onSnapshot(offerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+              let data = change.doc.data();
+              pc.addIceCandidate(new RTCIceCandidate(data));
+            }
+          });
+        });
       }
-    };
+
+      pc.onconnectionstatechange = (event) => {
+        if (pc.connectionState === "disconnected") {
+          hangUp();
+        }
+      };
+    } catch (error) {
+      console.error("Error during setupSources:", error);
+    }
   };
 
   const hangUp = async () => {
