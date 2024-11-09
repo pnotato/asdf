@@ -23,7 +23,7 @@ const servers = {
 
 let pc = new RTCPeerConnection();
 
-function FirebaseStream({ stream }) {
+function FirebaseStream({ video }) {
   const [localStream, setLocalStream] = useState(null); // My WebCam!
   const [remoteStream, setRemoteStream] = useState(null); // Your WebCam!
 }
